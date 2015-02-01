@@ -1,6 +1,12 @@
 package org.stephaneseng.overlapplugin;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 import org.gephi.data.attributes.api.AttributeColumn;
 import org.gephi.data.attributes.api.AttributeModel;
 import org.gephi.data.attributes.api.AttributeOrigin;
@@ -32,25 +38,26 @@ public class Overlap implements Statistics, LongTask {
   public void execute(GraphModel graphModel, AttributeModel attributeModel) {
     // Initialize the Overlap attributes in the AttributeModel.
     AttributeTable nodeTable = attributeModel.getNodeTable();
-    AttributeColumn xColumn = nodeTable.getColumn("xColumn");
-    if (xColumn == null) {
-      xColumn = nodeTable.addColumn("xColumn", "X", AttributeType.INT, AttributeOrigin.COMPUTED, 0);
+    AttributeColumn xAttributeColumn = nodeTable.getColumn("xAttributeColumn");
+    if (xAttributeColumn == null) {
+      xAttributeColumn = nodeTable.addColumn("xAttributeColumn", "X", AttributeType.INT, AttributeOrigin.COMPUTED, 0);
     }
-    AttributeColumn yColumn = nodeTable.getColumn("yColumn");
-    if (yColumn == null) {
-      yColumn = nodeTable.addColumn("yColumn", "Y", AttributeType.INT, AttributeOrigin.COMPUTED, 0);
+    AttributeColumn yAttributeColumn = nodeTable.getColumn("yAttributeColumn");
+    if (yAttributeColumn == null) {
+      yAttributeColumn = nodeTable.addColumn("yAttributeColumn", "Y", AttributeType.INT, AttributeOrigin.COMPUTED, 0);
     }
-    AttributeColumn sizeColumn = nodeTable.getColumn("sizeColumn");
-    if (sizeColumn == null) {
-      sizeColumn = nodeTable.addColumn("sizeColumn", "SIZE", AttributeType.INT, AttributeOrigin.COMPUTED, 0);
+    AttributeColumn sizeAttributeColumn = nodeTable.getColumn("sizeAttributeColumn");
+    if (sizeAttributeColumn == null) {
+      sizeAttributeColumn = nodeTable.addColumn("sizeAttributeColumn", "SIZE", AttributeType.INT, AttributeOrigin.COMPUTED, 0);
     }
-    AttributeColumn overlapColumn = nodeTable.getColumn("overlapColumn");
-    if (overlapColumn == null) {
-      overlapColumn = nodeTable.addColumn("overlapColumn", "OVERLAP", AttributeType.INT, AttributeOrigin.COMPUTED, 0);
+    AttributeColumn overlapAttributeColumn = nodeTable.getColumn("overlapAttributeColumn");
+    if (overlapAttributeColumn == null) {
+      overlapAttributeColumn = nodeTable.addColumn("overlapAttributeColumn", "OVERLAP", AttributeType.INT, AttributeOrigin.COMPUTED, 0);
     }
 
     // Initialize the Overlap attribute algorithm.
-    HashMap<String, Integer> overlapHashMap = new HashMap<>();
+    Map<String, Integer> overlapHashMap = new HashMap<>();
+    Map<Integer, Set<Node>> overlapTreeMap = new TreeMap<>();
 
     // For all the Graph nodes, evaluate the Overlap attribute.
     Graph graph = graphModel.getGraph();
@@ -65,10 +72,10 @@ public class Overlap implements Statistics, LongTask {
         int size = Math.round(node.getNodeData().getSize());
 
         // Save the node position.
-        AttributeRow nodeRow = (AttributeRow) node.getNodeData().getAttributes();
-        nodeRow.setValue(xColumn, x);
-        nodeRow.setValue(yColumn, y);
-        nodeRow.setValue(sizeColumn, size);
+        AttributeRow attributeRow = (AttributeRow) node.getNodeData().getAttributes();
+        attributeRow.setValue(xAttributeColumn, x);
+        attributeRow.setValue(yAttributeColumn, y);
+        attributeRow.setValue(sizeAttributeColumn, size);
 
         // Increment the number of nodes at the same position.
         for (int i = 0; i < size; i++) {
@@ -90,11 +97,12 @@ public class Overlap implements Statistics, LongTask {
         }
       }
 
+      // Second graph iteration: Evaluate the Overlap attribute.
       for (Node node : graph.getNodes()) {
-        AttributeRow nodeRow = (AttributeRow) node.getNodeData().getAttributes();
-        int x = (int) nodeRow.getValue(xColumn);
-        int y = (int) nodeRow.getValue(yColumn);
-        int size = (int) nodeRow.getValue(sizeColumn);
+        AttributeRow attributeRow = (AttributeRow) node.getNodeData().getAttributes();
+        int x = (int) attributeRow.getValue(xAttributeColumn);
+        int y = (int) attributeRow.getValue(yAttributeColumn);
+        int size = (int) attributeRow.getValue(sizeAttributeColumn);
 
         int overlapTotal = 0;
         int overlapCount = 0;
@@ -114,17 +122,46 @@ public class Overlap implements Statistics, LongTask {
         if (overlapCount != 0) {
           overlap = Math.round((float) (overlapTotal / overlapCount));
         }
-        nodeRow.setValue(overlapColumn, overlap);
+        attributeRow.setValue(overlapAttributeColumn, overlap);
 
         Progress.progress(progressTicket);
         if (this.cancel) {
           break;
         }
       }
+
+      // "Hack": Third graph iteration: Change the order of the nodes so that the more Overlapped nodes are shown in the foreground.
+      for (Node node : graph.getNodes()) {
+        AttributeRow attributeRow = (AttributeRow) node.getNodeData().getAttributes();
+        int overlap = (int) attributeRow.getValue(overlapAttributeColumn);
+
+        if (overlapTreeMap.get(overlap) == null) {
+          overlapTreeMap.put(overlap, new HashSet<Node>());
+        }
+        Set<Node> overlapTreeMapSet = overlapTreeMap.get(overlap);
+        overlapTreeMapSet.add(node);
+        overlapTreeMap.put(overlap, overlapTreeMapSet);
+      }
+
       graph.readUnlockAll();
     } catch (Exception e) {
       e.printStackTrace();
       graph.readUnlockAll();
+    }
+
+    graph.writeLock();
+    try {
+      // "Hack": "Fourth" graph iteration.
+      Collection<Set<Node>> overlapTreeMapSets = overlapTreeMap.values();
+      for (Set<Node> overlapTreeMapSet : overlapTreeMapSets) {
+        for (Node node : overlapTreeMapSet) {
+          graph.removeNode(node);
+          graph.addNode(node);
+        }
+      }
+      graph.writeUnlock();
+    } catch (Exception e) {
+      graph.writeUnlock();
     }
   }
 
