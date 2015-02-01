@@ -6,6 +6,8 @@ import org.openide.util.lookup.ServiceProvider;
 
 /**
  * Implements StatisticsBuilder. Returns metadata about the implemented metric.
+ *
+ * @author StephaneSeng
  */
 @ServiceProvider(service = StatisticsBuilder.class)
 public class OverlapBuilder implements StatisticsBuilder {

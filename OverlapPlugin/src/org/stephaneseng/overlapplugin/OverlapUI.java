@@ -7,6 +7,8 @@ import org.openide.util.lookup.ServiceProvider;
 
 /**
  * Implements StatisticsUI. Returns the UI to configure the metric calculation.
+ *
+ * @author StephaneSeng
  */
 @ServiceProvider(service = StatisticsUI.class)
 public class OverlapUI implements StatisticsUI {
@@ -48,10 +50,16 @@ public class OverlapUI implements StatisticsUI {
   @Override
   public void setup(Statistics statistics) {
     this.overlap = (Overlap) statistics;
+    if (this.overlapJPanel != null) {
+      this.overlapJPanel.setScale(this.overlap.getScale());
+    }
   }
 
   @Override
   public void unsetup() {
+    if (this.overlapJPanel != null) {
+      this.overlap.setScale(this.overlapJPanel.getScale());
+    }
     this.overlapJPanel = null;
   }
 
